@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OCI Gen AI Agent Chat</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #f4f4f9;
+        }
+        .chat-container {
+            width: 90%;
+            max-width: 600px;
+            background: white;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+            border-radius: 8px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            height: 80vh;
+        }
+        .chat-header {
+            background-color: #007bff;
+            color: white;
+            padding: 15px;
+            text-align: center;
+            font-size: 1.2em;
+        }
+        .chat-messages {
+            flex-grow: 1;
+            padding: 20px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+        .message {
+            margin-bottom: 10px;
+            padding: 10px;
+            border-radius: 5px;
+            max-width: 80%;
+            word-wrap: break-word;
+        }
+        .user-message {
+            align-self: flex-end;
+            background-color: #e1ffc7;
+            text-align: right;
+        }
+        .agent-message {
+            align-self: flex-start;
+            background-color: #d1e7ff;
+            text-align: left;
+        }
+        .chat-input {
+            display: flex;
+            padding: 15px;
+            border-top: 1px solid #ddd;
+        }
+        .chat-input input[type="text"] {
+            flex-grow: 1;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px 0 0 4px;
+            font-size: 1em;
+        }
+        .chat-input button {
+            padding: 10px 15px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 0 4px 4px 0;
+            cursor: pointer;
+            font-size: 1em;
+            transition: background-color 0.3s;
+        }
+        .chat-input button:hover {
+            background-color: #0056b3;
+        }
+        .session-info {
+            font-size: 0.8em;
+            color: #888;
+            padding: 5px 20px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <div class="chat-header">OCI Generative AI Chat Agent</div>
+        <div class="chat-messages" id="chat-messages">
+            </div>
+        <div class="session-info">
+            Aktuelle Session ID: <input type="text" id="session-id" value="" readonly style="width: 250px; border: none; background: transparent; font-size: 0.8em; color: #888;">
+        </div>
+        <div class="chat-input">
+            <input type="text" id="user-input" placeholder="Nachricht eingeben..." autofocus onkeydown="if(event.keyCode === 13) document.getElementById('send-button').click()">
+            <button id="send-button" onclick="sendMessage()">Senden</button>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            appendMessage('agent', 'Hallo! Wie kann ich Ihnen heute helfen?');
+        });
+
+        function appendMessage(sender, text) {
+            const messagesContainer = document.getElementById('chat-messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.classList.add('message');
+            messageDiv.classList.add(sender + '-message');
+            messageDiv.textContent = text;
+            messagesContainer.appendChild(messageDiv);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+
+        async function sendMessage() {
+            const inputElement = document.getElementById('user-input');
+            const userMessage = inputElement.value.trim();
+            const sessionIdElement = document.getElementById('session-id');
+            const currentSessionId = sessionIdElement.value;
+
+            if (!userMessage) return;
+
+            // Nachricht senden
+            appendMessage('user', userMessage);
+            inputElement.value = '';
+
+            try {
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        user_message: userMessage,
+                        session_id: currentSessionId || null
+                    })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    let agentResponseText = "Fehler bei der Textanzeige.";
+                    
+                    const rawAnswer = data.answer; 
+                    console.debug(rawAnswer);
+                    // 🚨 FINALE ROBUSSTHEITS-KORREKTUR FÜR FEHLERHAFTES BACKEND-JSON-STRING-LITERAL 🚨
+                    if (typeof rawAnswer === 'string') {
+                        // 1. Prüfen, ob "answer" bereits der reine String ist (Idealfall)
+                        if (!rawAnswer.startsWith('{')) {
+                            agentResponseText = rawAnswer;
+                        } 
+                        // 2. Prüfen, ob "answer" der fehlerhafte JSON-String ist
+                        else {
+                            try {
+                                // A) Versuch: String als gültiges JSON parsen (wenn es korrekte double-quotes hat)
+                                let parsedJson = JSON.parse(rawAnswer);
+                                
+                                if (parsedJson && parsedJson.text) {
+                                    agentResponseText = parsedJson.text;
+                                }
+                            } catch (e) {
+                                // B) Fallback: Wenn JSON.parse fehlschlägt, verwende aggressiven RegEx.
+                                
+                                // Die RegEx sucht nach 'text' (mit einfachen oder doppelten Anführungszeichen)
+                                // und erfasst dann ALLES bis zum nächsten Zitat-Trennzeichen (nicht-gierig).
+                                const aggressiveRegex = /['"]text['"]\s*:\s*['"](.*?)['"](,\s*['"]citations['"]\s*:\s*\[.*\])?/s;
+                                
+                                const match = rawAnswer.match(aggressiveRegex); 
+                                
+                                if (match && match[1]) {
+                                    // 🚀 WICHTIG: trim() stellt sicher, dass keine Leerzeichen/Newlines mitkommen, 
+                                    // die das RegEx am Ende möglicherweise mit erfasst hat.
+                                    agentResponseText = match[1].trim(); 
+                                    console.debug("Aggressive RegEx-Extraktion erfolgreich. Extrahierter Text:", agentResponseText);
+                                } else {
+                                    console.error("FEHLER: Der Backend-String konnte NICHT geparst werden. Raw:", rawAnswer);
+                                    agentResponseText = "FEHLER: Konnte die Antwort nicht verarbeiten. RAW: " + rawAnswer.substring(0, 200) + "..."; 
+                                }
+                            }
+                        }
+                    } else {
+                         // Falls rawAnswer unerwarteterweise kein String ist.
+                         agentResponseText = JSON.stringify(rawAnswer, null, 2);
+                    }
+                    // 🚨 ENDE DER KORREKTUR 🚨
+
+                    appendMessage('agent', agentResponseText);
+                    sessionIdElement.value = data.session_id;
+                    
+                } else {
+                    const errorData = await response.json();
+                    appendMessage('agent', 'Fehler vom Backend: ' + (errorData.detail || 'Unbekannter Fehler'));
+                    console.error('Backend Fehler:', errorData);
+                }
+            } catch (error) {
+                appendMessage('agent', 'Netzwerkfehler: Konnte Backend nicht erreichen (Prüfen Sie den Serverstatus).');
+                console.error('Netzwerkfehler:', error);
+            }
+        }
+    </script>
+</body>
+</html>
