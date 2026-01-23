@@ -17,9 +17,6 @@ export OCI_CLI_PROFILE=WS
 
 ### Beispiel OCI API:
 oci os ns get
-{
-  "data": "..."
-}
 
 ## Python Konfiguration für lokale Ausführung
 ### Prepate a local Python Env, Install, Start (Mac)
@@ -66,7 +63,7 @@ docker ps
 docker logs chat-agent-instance
 
 ## Container in OCI Registry pushen
-docker login -u '<tenancy_ns>>/<user>' -p '<token>' fra.ocir.io
+docker login -u '<tenancy_ns>/<user>' -p '<token>' fra.ocir.io
 docker tag chat-agent-app fra.ocir.io/<ns>/chatagent:pychat
 docker push fra.ocir.io/<ns>/chatagent:pychat
 
